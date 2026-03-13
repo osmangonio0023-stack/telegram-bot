@@ -58,7 +58,7 @@ async def check_join(update,context):
         return True
     else:
         await update.message.reply_text(
-            f"❌ Join our channel first\nhttps://t.me/{@methodzone10}"
+            f"❌ Join our channel first\nhttps://t.me/methodzone10"
         )
         return False
 
