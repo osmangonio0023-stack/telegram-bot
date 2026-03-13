@@ -1,0 +1,22 @@
+<html>
+<head>
+<title>Bot Admin</title>
+</head>
+
+<body>
+
+<h1>Telegram Bot Dashboard</h1>
+
+<h2>Total Users: {{users}}</h2>
+<h2>Total Coins: {{coins}}</h2>
+
+<h3>Top Users</h3>
+
+<ul>
+{% for u in leaderboard %}
+<li>{{u[0]}} - {{u[1]}} coins</li>
+{% endfor %}
+</ul>
+
+</body>
+</html>
