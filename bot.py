@@ -5,7 +5,7 @@ import os
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, ContextTypes, filters
 
-TOKEN = os.getenv("8688397504:AAErRucBamI-VQJI1cb7mGWJbNdrGIRri8c")
+TOKEN = os.getenv("TOKEN")
 
 # DATABASE
 conn = sqlite3.connect("bot.db", check_same_thread=False)
