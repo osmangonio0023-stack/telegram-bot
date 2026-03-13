@@ -3,14 +3,13 @@ import random
 import time
 import os
 from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
+from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 TOKEN = os.getenv("TOKEN")
 
 ADMIN_ID = 7950791526
 CHANNEL = "@methodzone10"
 
-# DATABASE
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cur = conn.cursor()
 
@@ -18,85 +17,64 @@ cur.execute("""
 CREATE TABLE IF NOT EXISTS users(
 user_id INTEGER PRIMARY KEY,
 balance INTEGER DEFAULT 0,
-referrer INTEGER,
-ref_count INTEGER DEFAULT 0,
-last_daily INTEGER DEFAULT 0
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS withdraws(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-user_id INTEGER,
-amount INTEGER,
-method TEXT,
-number TEXT,
-status TEXT
+last_daily INTEGER DEFAULT 0,
+last_spin INTEGER DEFAULT 0
 )
 """)
 
 conn.commit()
-
-# FUNCTIONS
 
 def get_user(user):
     cur.execute("SELECT * FROM users WHERE user_id=?", (user,))
     data = cur.fetchone()
 
     if not data:
-        cur.execute("INSERT INTO users(user_id,balance) VALUES(?,0)", (user,))
+        cur.execute("INSERT INTO users(user_id) VALUES(?)",(user,))
         conn.commit()
-
-def get_balance(user):
-    cur.execute("SELECT balance FROM users WHERE user_id=?", (user,))
-    return cur.fetchone()[0]
 
 def add_balance(user,amount):
     cur.execute("UPDATE users SET balance = balance + ? WHERE user_id=?", (amount,user))
     conn.commit()
 
-# KEYBOARD
+def get_balance(user):
+    cur.execute("SELECT balance FROM users WHERE user_id=?", (user,))
+    return cur.fetchone()[0]
 
 keyboard = [
 ["💰 Balance","🎮 Quiz"],
-["🎡 Spin","📋 Daily Task"],
-["👥 Referral","🏆 Leaderboard"],
-["💳 Withdraw"]
+["🎡 Spin","📋 Daily"],
+["🏆 Leaderboard","👥 Referral"]
 ]
 
-markup = ReplyKeyboardMarkup(keyboard,resize_keyboard=True)
+markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
-# START
+async def check_join(update,context):
 
-async def start(update:Update,context:ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user.id
+
+    member = await context.bot.get_chat_member(CHANNEL,user)
+
+    if member.status in ["member","administrator","creator"]:
+        return True
+    else:
+        await update.message.reply_text(
+            f"❌ Join our channel first\nhttps://t.me/{@methodzone10}"
+        )
+        return False
+
+async def start(update,context):
+
+    if not await check_join(update,context):
+        return
 
     user = update.effective_user.id
 
     get_user(user)
 
-    if context.args:
-
-        ref = int(context.args[0])
-
-        if ref != user:
-
-            cur.execute("SELECT referrer FROM users WHERE user_id=?", (user,))
-            data = cur.fetchone()[0]
-
-            if data is None:
-
-                cur.execute("UPDATE users SET referrer=? WHERE user_id=?", (ref,user))
-                cur.execute("UPDATE users SET ref_count = ref_count + 1 WHERE user_id=?", (ref,))
-                add_balance(ref,10)
-
-                conn.commit()
-
     await update.message.reply_text(
-        "🤖 Welcome to Earning Bot",
+        "🤖 Welcome to Task Bot",
         reply_markup=markup
     )
-
-# BALANCE
 
 async def balance(update,context):
 
@@ -104,7 +82,23 @@ async def balance(update,context):
 
     await update.message.reply_text(f"💰 Balance: {bal} coins")
 
-# DAILY
+async def quiz(update,context):
+
+    context.user_data["answer"]="10"
+
+    await update.message.reply_text("❓ 5+5=?")
+
+async def answer(update,context):
+
+    if context.user_data.get("answer"):
+
+        if update.message.text=="10":
+
+            add_balance(update.effective_user.id,5)
+
+            await update.message.reply_text("✅ Correct +5 coins")
+
+        context.user_data["answer"]=None
 
 async def daily(update,context):
 
@@ -115,9 +109,9 @@ async def daily(update,context):
 
     now = int(time.time())
 
-    if now - last < 86400:
+    if now-last < 86400:
 
-        await update.message.reply_text("⏳ Come back tomorrow")
+        await update.message.reply_text("⏳ Daily already claimed")
 
     else:
 
@@ -126,19 +120,49 @@ async def daily(update,context):
         cur.execute("UPDATE users SET last_daily=? WHERE user_id=?", (now,user))
         conn.commit()
 
-        await update.message.reply_text("✅ Daily reward +10 coins")
-
-# SPIN
+        await update.message.reply_text("📋 +10 coins")
 
 async def spin(update,context):
 
-    reward = random.choice([0,2,5,10,20])
+    user = update.effective_user.id
 
-    add_balance(update.effective_user.id,reward)
+    cur.execute("SELECT last_spin FROM users WHERE user_id=?", (user,))
+    last = cur.fetchone()[0]
 
-    await update.message.reply_text(f"🎡 You won {reward} coins")
+    now = int(time.time())
 
-# REFERRAL
+    if now-last < 3600:
+
+        await update.message.reply_text("⏳ Spin cooldown 1h")
+
+    else:
+
+        reward = random.choice([0,2,5,10,20])
+
+        add_balance(user,reward)
+
+        cur.execute("UPDATE users SET last_spin=? WHERE user_id=?", (now,user))
+        conn.commit()
+
+        await update.message.reply_text(f"🎡 You won {reward} coins")
+
+async def leaderboard(update,context):
+
+    cur.execute("SELECT user_id,balance FROM users ORDER BY balance DESC LIMIT 10")
+
+    rows = cur.fetchall()
+
+    text="🏆 Leaderboard\n\n"
+
+    r=1
+
+    for i in rows:
+
+        text+=f"{r}. {i[0]} - {i[1]}\n"
+
+        r+=1
+
+    await update.message.reply_text(text)
 
 async def referral(update,context):
 
@@ -146,140 +170,81 @@ async def referral(update,context):
 
     link = f"https://t.me/earning_task99_bot?start={user}"
 
-    cur.execute("SELECT ref_count FROM users WHERE user_id=?", (user,))
-    refs = cur.fetchone()[0]
+    await update.message.reply_text(link)
 
-    await update.message.reply_text(
-        f"👥 Your referral link:\n{link}\n\nReferrals: {refs}"
-    )
-
-# LEADERBOARD
-
-async def leaderboard(update,context):
-
-    cur.execute("SELECT user_id,ref_count FROM users ORDER BY ref_count DESC LIMIT 10")
-
-    rows = cur.fetchall()
-
-    text = "🏆 Referral Leaderboard\n\n"
-
-    rank = 1
-
-    for r in rows:
-
-        text += f"{rank}. {r[0]} - {r[1]} refs\n"
-
-        rank += 1
-
-    await update.message.reply_text(text)
-
-# WITHDRAW
-
-async def withdraw(update,context):
-
-    user = update.effective_user.id
-
-    bal = get_balance(user)
-
-    if bal < 50:
-
-        await update.message.reply_text("❌ Minimum withdraw 5000 coins")
-
-        return
-
-    context.user_data["withdraw"] = True
-
-    await update.message.reply_text("Send Bkash/Nagad number")
-
-async def withdraw_number(update,context):
-
-    if context.user_data.get("withdraw"):
-
-        number = update.message.text
-
-        user = update.effective_user.id
-
-        cur.execute(
-            "INSERT INTO withdraws(user_id,amount,method,number,status) VALUES(?,?,?,?,?)",
-            (user,50,"bkash",number,"pending")
-        )
-
-        add_balance(user,-50)
-
-        conn.commit()
-
-        await update.message.reply_text("✅ Withdraw request sent")
-
-        context.user_data["withdraw"] = False
-
-# ADMIN PANEL
-
-async def withdraws(update,context):
+async def users(update,context):
 
     if update.effective_user.id != ADMIN_ID:
         return
 
-    cur.execute("SELECT id,user_id,amount FROM withdraws WHERE status='pending'")
+    cur.execute("SELECT COUNT(*) FROM users")
 
-    rows = cur.fetchall()
+    total = cur.fetchone()[0]
 
-    text = "💳 Pending Withdraws\n\n"
+    await update.message.reply_text(f"👥 Users: {total}")
 
-    for r in rows:
-
-        text += f"ID:{r[0]} User:{r[1]} Amount:{r[2]}\n"
-
-    await update.message.reply_text(text)
-
-async def approve(update,context):
+async def stats(update,context):
 
     if update.effective_user.id != ADMIN_ID:
         return
 
-    wid = context.args[0]
+    cur.execute("SELECT SUM(balance) FROM users")
 
-    cur.execute("UPDATE withdraws SET status='approved' WHERE id=?", (wid,))
-    conn.commit()
+    total = cur.fetchone()[0]
 
-    await update.message.reply_text("Withdraw approved")
+    await update.message.reply_text(f"💰 Total coins: {total}")
 
-# BUTTONS
+async def broadcast(update,context):
+
+    if update.effective_user.id != ADMIN_ID:
+        return
+
+    msg = " ".join(context.args)
+
+    cur.execute("SELECT user_id FROM users")
+
+    rows = cur.fetchall()
+
+    for r in rows:
+        try:
+            await context.bot.send_message(r[0],msg)
+        except:
+            pass
 
 async def buttons(update,context):
 
     text = update.message.text
 
-    if text == "💰 Balance":
+    if text=="💰 Balance":
         await balance(update,context)
 
-    elif text == "📋 Daily Task":
+    elif text=="🎮 Quiz":
+        await quiz(update,context)
+
+    elif text=="📋 Daily":
         await daily(update,context)
 
-    elif text == "🎡 Spin":
+    elif text=="🎡 Spin":
         await spin(update,context)
 
-    elif text == "👥 Referral":
-        await referral(update,context)
-
-    elif text == "🏆 Leaderboard":
+    elif text=="🏆 Leaderboard":
         await leaderboard(update,context)
 
-    elif text == "💳 Withdraw":
-        await withdraw(update,context)
+    elif text=="👥 Referral":
+        await referral(update,context)
 
     else:
-        await withdraw_number(update,context)
-
-# APP
+        await answer(update,context)
 
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start",start))
-app.add_handler(CommandHandler("withdraws",withdraws))
-app.add_handler(CommandHandler("approve",approve))
+app.add_handler(CommandHandler("users",users))
+app.add_handler(CommandHandler("broadcast",broadcast))
+app.add_handler(CommandHandler("stats",stats))
 
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,buttons))
 
-print("Bot Running...")
+print("Bot Running")
 
 app.run_polling()
