@@ -1,7 +1,7 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 
-TOKEN = "8688397504:AAF8ffdb0okhUJlawf7WO-A7qJoGLz6jQvs"
+TOKEN = "8688397504:AAErRucBamI-VQJI1cb7mGWJbNdrGIRri8c"
 
 keyboard = [
 ["💰 Balance","🎮 Quiz"],
