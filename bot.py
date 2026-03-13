@@ -5,7 +5,7 @@ import os
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("8688397504:AAFSkW-Z62E2KLN1RwAcwefjpMzCEHjXdWg")
 
 ADMIN_ID = 7950791526
 CHANNEL = "@methodzone10"
